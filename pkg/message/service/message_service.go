@@ -32,6 +32,7 @@ type MessageService interface {
 	GetMessageStatus(data *MessageStatusStruct, instance *instance_model.Instance) (*message_model.Message, string, error)
 	DeleteMessageEveryone(data *MessageStruct, instance *instance_model.Instance) (string, string, error)
 	EditMessage(data *EditMessageStruct, instance *instance_model.Instance) (string, string, error)
+	RequestUnavailableMessage(data *RequestUnavailableMessageStruct, instance *instance_model.Instance) (string, error)
 }
 
 type messageService struct {
@@ -86,6 +87,17 @@ type EditMessageStruct struct {
 	Chat      string `json:"chat"`
 	Message   string `json:"message"`
 	MessageID string `json:"messageId"`
+}
+
+// RequestUnavailableMessageStruct names a message this device knows exists but
+// never received the content of ("Waiting for this message"). The phone is
+// asked to send its copy; the answer arrives as a normal Message event.
+type RequestUnavailableMessageStruct struct {
+	Chat   string `json:"chat"`
+	Id     string `json:"id"`
+	FromMe bool   `json:"fromMe"`
+	// Sender of the message in a group chat. For a DM it is the chat itself.
+	Sender string `json:"sender,omitempty"`
 }
 
 type MessageSendStruct struct {
@@ -537,4 +549,46 @@ func NewMessageService(
 		whatsmeowService:  whatsmeowService,
 		loggerWrapper:     loggerWrapper,
 	}
+}
+
+// RequestUnavailableMessage asks the user's primary phone to resend a message
+// this device could not get the content of (whatsmeow
+// BuildUnavailableMessageRequest + SendPeerMessage). The phone answers with a
+// PEER_DATA_OPERATION_REQUEST_RESPONSE_MESSAGE that whatsmeow turns into a
+// normal *events.Message with UnavailableRequestID set — so the recovered
+// message reaches consumers through the usual Message event. Returns the
+// request message id.
+func (m *messageService) RequestUnavailableMessage(data *RequestUnavailableMessageStruct, instance *instance_model.Instance) (string, error) {
+	client, err := m.ensureClientConnected(instance.Id)
+	if err != nil {
+		return "", err
+	}
+	if data.Id == "" {
+		return "", errors.New("id is required")
+	}
+	chat, ok := utils.ParseJID(data.Chat)
+	if !ok {
+		return "", errors.New("invalid chat")
+	}
+	// BuildMessageKey marks the key fromMe unless a sender other than us is
+	// given, so: empty sender for our own message, the chat (or the group
+	// participant) for theirs.
+	sender := types.EmptyJID
+	if !data.FromMe {
+		sender = chat
+		if data.Sender != "" {
+			parsed, ok := utils.ParseJID(data.Sender)
+			if !ok {
+				return "", errors.New("invalid sender")
+			}
+			sender = parsed
+		}
+	}
+	req := client.BuildUnavailableMessageRequest(chat, sender, data.Id)
+	res, err := client.SendPeerMessage(context.Background(), req)
+	if err != nil {
+		m.loggerWrapper.GetLogger(instance.Id).LogError("[%s] error requesting unavailable message: %v", instance.Id, err)
+		return "", err
+	}
+	return res.ID, nil
 }

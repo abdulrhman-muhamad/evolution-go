@@ -17,6 +17,7 @@ type MessageHandler interface {
 	GetMessageStatus(ctx *gin.Context)
 	DeleteMessageEveryone(ctx *gin.Context)
 	EditMessage(ctx *gin.Context)
+	RequestUnavailableMessage(ctx *gin.Context)
 }
 
 type messageHandler struct {
@@ -419,4 +420,45 @@ func NewMessageHandler(
 	return &messageHandler{
 		messageService: messageService,
 	}
+}
+
+// RequestUnavailableMessage asks the phone for a message's content
+// @Summary Request a "Waiting for this message" message from the phone
+// @Description Asks the user's primary phone to resend a message this device never received the content of. The recovered message is delivered as a normal Message event.
+// @Tags Message
+// @Accept json
+// @Produce json
+// @Param message body message_service.RequestUnavailableMessageStruct true "The message to request"
+// @Success 200 {object} gin.H "success"
+// @Failure 400 {object} gin.H "Error on validation"
+// @Failure 500 {object} gin.H "Internal server error"
+// @Router /message/request-unavailable [post]
+func (m *messageHandler) RequestUnavailableMessage(ctx *gin.Context) {
+	getInstance := ctx.MustGet("instance")
+
+	instance, ok := getInstance.(*instance_model.Instance)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "instance not found"})
+		return
+	}
+
+	var data *message_service.RequestUnavailableMessageStruct
+	err := ctx.ShouldBindBodyWithJSON(&data)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if data.Id == "" || data.Chat == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "chat and id are required"})
+		return
+	}
+
+	requestId, err := m.messageService.RequestUnavailableMessage(data, instance)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{"requestId": requestId}})
 }
