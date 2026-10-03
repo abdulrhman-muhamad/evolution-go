@@ -30,6 +30,7 @@ type Config struct {
 	LogType              string
 	WebhookFiles         bool
 	ConnectOnStartup     bool
+	RerequestFromPhone   bool
 	OsName               string
 	AmqpUrl              string
 	AmqpGlobalEnabled    bool
@@ -245,6 +246,11 @@ func Load() *Config {
 		connectOnStartup = "false"
 	}
 
+	// Opt-in: when a live message cannot be decrypted, also ask the user's
+	// primary phone for it (whatsmeow AutomaticMessageRerequestFromPhone), not
+	// only the sender, who may be offline for days.
+	rerequestFromPhone := os.Getenv(config_env.REREQUEST_FROM_PHONE)
+
 	osName := os.Getenv(config_env.OS_NAME)
 
 	amqpUrl := os.Getenv(config_env.AMQP_URL)
@@ -351,6 +357,7 @@ func Load() *Config {
 		LogType:              logType,
 		WebhookFiles:         webhookFiles == "true",
 		ConnectOnStartup:     connectOnStartup == "true",
+		RerequestFromPhone:   rerequestFromPhone == "true",
 		OsName:               osName,
 		AmqpUrl:              amqpUrl,
 		AmqpGlobalEnabled:    amqpGlobalEnabled == "true",

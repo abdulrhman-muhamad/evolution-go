@@ -462,6 +462,12 @@ func (w whatsmeowService) StartClient(cd *ClientData) {
 	}
 
 	client.EnableAutoReconnect = false
+	// Opt-in (REREQUEST_FROM_PHONE=true): a live message this device cannot
+	// decrypt is also requested from the user's phone (after
+	// whatsmeow.RequestFromPhoneDelay), not only from the sender — the sender
+	// may be offline for days. The phone's answer arrives as a normal
+	// *events.Message with UnavailableRequestID set.
+	client.AutomaticMessageRerequestFromPhone = w.config.RerequestFromPhone
 	client.AutoTrustIdentity = true
 
 	mycli := &MyClient{

@@ -234,7 +234,11 @@ func (c *chatService) HistorySyncRequest(data *HistorySyncRequestStruct, instanc
 
 	histRequest := client.BuildHistorySyncRequest(&messageInfo, data.Count)
 
-	res, err := client.SendMessage(context.Background(), messageInfo.Chat, histRequest, whatsmeow.SendRequestExtra{Peer: true})
+	// whatsmeow: "The built message can be sent using Client.SendPeerMessage" —
+	// i.e. to the user's OWN primary device. Sending it to messageInfo.Chat
+	// encrypted a peer protocol message for the CONTACT's device instead, so the
+	// phone never saw the request and no ON_DEMAND chunk ever came back.
+	res, err := client.SendPeerMessage(context.Background(), histRequest)
 	if err != nil {
 		c.loggerWrapper.GetLogger(instance.Id).LogError("[%s] error history sync request: %v", instance.Id, err)
 		return nil, err
